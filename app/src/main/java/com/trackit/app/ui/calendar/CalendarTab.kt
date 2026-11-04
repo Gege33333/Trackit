@@ -23,6 +23,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,8 +40,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.trackit.app.data.LoadState
 import com.trackit.app.data.MoneyRecord
 import com.trackit.app.ui.components.ConfirmDialog
+import com.trackit.app.ui.components.ErrorBanner
+import com.trackit.app.ui.components.GENERIC_ERROR_MESSAGE
 import com.trackit.app.ui.components.RecordDialog
 import com.trackit.app.ui.components.RecordRow
 import com.trackit.app.ui.components.SummaryLine
@@ -60,9 +64,19 @@ private const val CALENDAR_CELL_RATIO = 0.8f
 @Composable
 fun CalendarTab(vm: CalendarViewModel) {
     val s by vm.state.collectAsStateWithLifecycle()
+    val loadState by vm.loadState.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<MoneyRecord?>(null) }
     var deleting by remember { mutableStateOf<MoneyRecord?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var serverError by remember { mutableStateOf<String?>(null) }
     val today = LocalDate.now()
+
+    fun closeDialogs() {
+        editing = null
+        deleting = null
+        busy = false
+        serverError = null
+    }
 
     Column(
         Modifier
@@ -70,6 +84,13 @@ fun CalendarTab(vm: CalendarViewModel) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 12.dp, vertical = 16.dp),
     ) {
+        if (loadState is LoadState.Loading) {
+            LinearProgressIndicator(Modifier.fillMaxWidth().padding(bottom = 8.dp))
+        }
+        (loadState as? LoadState.Failed)?.let { failed ->
+            ErrorBanner(failed.message, onRetry = { vm.refresh() }, modifier = Modifier.padding(bottom = 8.dp))
+        }
+
         // A. Month header + monthly total, side by side
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 4.dp),
@@ -198,8 +219,19 @@ fun CalendarTab(vm: CalendarViewModel) {
             initial = record,
             defaultType = record.type,
             defaultDate = null,
-            onDismiss = { editing = null },
-            onSave = { vm.saveRecord(it); editing = null },
+            busy = busy,
+            serverError = serverError,
+            onDismiss = { closeDialogs() },
+            onSave = { updated ->
+                busy = true
+                serverError = null
+                vm.saveRecord(updated) { result ->
+                    busy = false
+                    result
+                        .onSuccess { closeDialogs() }
+                        .onFailure { serverError = it.message ?: GENERIC_ERROR_MESSAGE }
+                }
+            },
         )
     }
     deleting?.let { record ->
@@ -207,8 +239,19 @@ fun CalendarTab(vm: CalendarViewModel) {
             title = "Delete record?",
             message = "This record will be permanently removed.",
             confirmLabel = "Delete",
-            onConfirm = { vm.deleteRecord(record.id); deleting = null },
-            onDismiss = { deleting = null },
+            busy = busy,
+            error = serverError,
+            onDismiss = { closeDialogs() },
+            onConfirm = {
+                busy = true
+                serverError = null
+                vm.deleteRecord(record.id) { result ->
+                    busy = false
+                    result
+                        .onSuccess { closeDialogs() }
+                        .onFailure { serverError = it.message ?: GENERIC_ERROR_MESSAGE }
+                }
+            },
         )
     }
 }

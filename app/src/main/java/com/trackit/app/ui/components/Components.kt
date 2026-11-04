@@ -21,6 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,6 +60,8 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
+
+const val GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again."
 
 @Composable
 fun typeColor(type: RecordType): Color = when (type) {
@@ -136,6 +140,29 @@ fun SummaryLine(label: String, value: String, color: Color = MaterialTheme.color
     }
 }
 
+/** Shown when loading data from the server failed. */
+@Composable
+fun ErrorBanner(message: String, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+        shape = RoundedCornerShape(16.dp),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                message,
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            TextButton(onClick = onRetry) { Text("Retry") }
+        }
+    }
+}
+
 @Composable
 fun ConfirmDialog(
     title: String,
@@ -143,13 +170,24 @@ fun ConfirmDialog(
     confirmLabel: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    busy: Boolean = false,
+    error: String? = null,
 ) {
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(title) },
-        text = { Text(message) },
-        confirmButton = { TextButton(onClick = onConfirm) { Text(confirmLabel) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(message)
+                error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = !busy) { Text(if (busy) "Please wait…" else confirmLabel) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } },
     )
 }
 
@@ -161,6 +199,8 @@ fun RecordDialog(
     defaultDate: LocalDate?,
     onDismiss: () -> Unit,
     onSave: (MoneyRecord) -> Unit,
+    busy: Boolean = false,
+    serverError: String? = null,
 ) {
     val context = LocalContext.current
     var type by remember { mutableStateOf(initial?.type ?: defaultType) }
@@ -172,11 +212,11 @@ fun RecordDialog(
                 ?: LocalDateTime.of(defaultDate ?: LocalDate.now(), LocalTime.now().withSecond(0).withNano(0))
         )
     }
-    var error by remember { mutableStateOf<String?>(null) }
+    var validationError by remember { mutableStateOf<String?>(null) }
     val amount = amountText.toLongOrNull() ?: 0L
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(if (initial == null) "Add record" else "Edit record") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -188,6 +228,7 @@ fun RecordDialog(
                         FilterChip(
                             selected = type == t,
                             onClick = { type = t },
+                            enabled = !busy,
                             label = { Text(label, maxLines = 1) },
                             modifier = Modifier.weight(1f),
                         )
@@ -195,13 +236,14 @@ fun RecordDialog(
                 }
                 OutlinedTextField(
                     value = amountText,
-                    onValueChange = { amountText = it.filter(Char::isDigit).take(12); error = null },
+                    onValueChange = { amountText = it.filter(Char::isDigit).take(12); validationError = null },
                     label = { Text("Amount") },
                     prefix = { Text("Rp") },
                     singleLine = true,
+                    enabled = !busy,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     supportingText = { Text(if (amount > 0) formatRp(amount) else "") },
-                    isError = error != null,
+                    isError = validationError != null,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
@@ -209,10 +251,12 @@ fun RecordDialog(
                     onValueChange = { description = it.take(80) },
                     label = { Text("Description (optional)") },
                     singleLine = true,
+                    enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
+                        enabled = !busy,
                         onClick = {
                             DatePickerDialog(
                                 context,
@@ -225,6 +269,7 @@ fun RecordDialog(
                         modifier = Modifier.weight(1f),
                     ) { Text(dateTime.toLocalDate().format(dateFormat), maxLines = 1) }
                     OutlinedButton(
+                        enabled = !busy,
                         onClick = {
                             TimePickerDialog(
                                 context,
@@ -237,29 +282,32 @@ fun RecordDialog(
                         modifier = Modifier.weight(0.7f),
                     ) { Text(dateTime.toLocalTime().format(timeFormat)) }
                 }
-                error?.let {
+                (validationError ?: serverError)?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                if (amount <= 0) {
-                    error = "Enter an amount greater than zero."
-                } else {
-                    onSave(
-                        MoneyRecord(
-                            id = initial?.id ?: UUID.randomUUID().toString(),
-                            type = type,
-                            amount = amount,
-                            description = description.trim(),
-                            dateTime = dateTime.toEpochMillis(),
+            TextButton(
+                enabled = !busy,
+                onClick = {
+                    if (amount <= 0) {
+                        validationError = "Enter an amount greater than zero."
+                    } else {
+                        onSave(
+                            MoneyRecord(
+                                id = initial?.id ?: UUID.randomUUID().toString(),
+                                type = type,
+                                amount = amount,
+                                description = description.trim(),
+                                dateTime = dateTime.toEpochMillis(),
+                            )
                         )
-                    )
-                }
-            }) { Text("Save") }
+                    }
+                },
+            ) { Text(if (busy) "Saving…" else "Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } },
     )
 }
 
@@ -270,55 +318,62 @@ fun PresetDialog(
     onDismiss: () -> Unit,
     onSave: (Preset) -> Unit,
     onDelete: (Preset) -> Unit,
+    busy: Boolean = false,
+    serverError: String? = null,
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
     var amountText by remember { mutableStateOf(initial?.amount?.toString() ?: "") }
-    var error by remember { mutableStateOf<String?>(null) }
+    var validationError by remember { mutableStateOf<String?>(null) }
     val amount = amountText.toLongOrNull() ?: 0L
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(if (initial == null) "New Easy Input" else "Edit Easy Input") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it.take(30); error = null },
+                    onValueChange = { name = it.take(30); validationError = null },
                     label = { Text("Name") },
                     placeholder = { Text("e.g. Daily Result") },
                     singleLine = true,
+                    enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     value = amountText,
-                    onValueChange = { amountText = it.filter(Char::isDigit).take(12); error = null },
+                    onValueChange = { amountText = it.filter(Char::isDigit).take(12); validationError = null },
                     label = { Text("Amount") },
                     prefix = { Text("Rp") },
                     singleLine = true,
+                    enabled = !busy,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     supportingText = { Text(if (amount > 0) formatRp(amount) else "") },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                error?.let {
+                (validationError ?: serverError)?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
                 if (initial != null) {
-                    TextButton(onClick = { onDelete(initial) }) {
+                    TextButton(onClick = { onDelete(initial) }, enabled = !busy) {
                         Text("Delete this Easy Input", color = MaterialTheme.colorScheme.error)
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                when {
-                    name.isBlank() -> error = "Please enter a name."
-                    amount <= 0 -> error = "Enter an amount greater than zero."
-                    else -> onSave(Preset(id = initial?.id ?: UUID.randomUUID().toString(), name = name.trim(), amount = amount))
-                }
-            }) { Text("Save") }
+            TextButton(
+                enabled = !busy,
+                onClick = {
+                    when {
+                        name.isBlank() -> validationError = "Please enter a name."
+                        amount <= 0 -> validationError = "Enter an amount greater than zero."
+                        else -> onSave(Preset(id = initial?.id ?: UUID.randomUUID().toString(), name = name.trim(), amount = amount))
+                    }
+                },
+            ) { Text(if (busy) "Saving…" else "Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } },
     )
 }
 
@@ -328,9 +383,11 @@ fun PresetUseDialog(
     preset: Preset,
     onChoose: (RecordType) -> Unit,
     onDismiss: () -> Unit,
+    busy: Boolean = false,
+    serverError: String? = null,
 ) {
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(preset.name) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -340,21 +397,32 @@ fun PresetUseDialog(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    "Add this amount as:",
+                    if (busy) "Adding…" else "Add this amount as:",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { onChoose(RecordType.PLUS) }, modifier = Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { onChoose(RecordType.PLUS) },
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f),
+                    ) {
                         Text("+ Plus", color = MaterialTheme.plusColor, fontWeight = FontWeight.SemiBold)
                     }
-                    OutlinedButton(onClick = { onChoose(RecordType.MINUS) }, modifier = Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { onChoose(RecordType.MINUS) },
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f),
+                    ) {
                         Text("- Minus", color = MaterialTheme.minusColor, fontWeight = FontWeight.SemiBold)
                     }
+                }
+                serverError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } },
     )
 }

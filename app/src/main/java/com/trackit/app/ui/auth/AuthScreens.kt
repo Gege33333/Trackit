@@ -61,6 +61,9 @@ private fun ErrorAndButton(vm: AuthViewModel, label: String, onClick: () -> Unit
     vm.error?.let {
         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
     }
+    vm.info?.let {
+        Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
+    }
     Button(
         onClick = onClick,
         enabled = !vm.loading,

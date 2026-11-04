@@ -17,11 +17,9 @@ import com.trackit.app.data.SettingsRepository
 import com.trackit.app.util.DaySummary
 import com.trackit.app.util.localDate
 import com.trackit.app.util.summarize
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -46,22 +44,38 @@ class AuthViewModel(private val auth: AuthRepository) : ViewModel() {
         private set
     var error by mutableStateOf<String?>(null)
         private set
+    var info by mutableStateOf<String?>(null)
+        private set
 
     fun clearError() {
         error = null
+        info = null
     }
 
-    fun login(email: String, password: String) = launchAuth { auth.login(email, password) }
+    fun login(email: String, password: String) = launchAuth {
+        auth.login(email, password)
+            .onFailure { error = it.message ?: "Something went wrong. Please try again." }
+    }
 
-    fun register(name: String, email: String, password: String) = launchAuth { auth.register(name, email, password) }
+    fun register(name: String, email: String, password: String) = launchAuth {
+        auth.register(name, email, password)
+            .onSuccess { signedIn ->
+                if (!signedIn) info = "Account created. Check your email to confirm it, then log in."
+            }
+            .onFailure { error = it.message ?: "Something went wrong. Please try again." }
+    }
 
-    private fun launchAuth(block: suspend () -> Result<Unit>) {
+    private fun launchAuth(block: suspend () -> Unit) {
         if (loading) return
         viewModelScope.launch {
             loading = true
             error = null
-            block().onFailure { error = it.message ?: "Something went wrong. Please try again." }
-            loading = false
+            info = null
+            try {
+                block()
+            } finally {
+                loading = false
+            }
         }
     }
 }
@@ -72,40 +86,44 @@ class TrackViewModel(
 ) : ViewModel() {
     val records = recordRepo.records
     val presets = presetRepo.presets
+    val recordsState = recordRepo.state
+    val presetsState = presetRepo.state
 
-    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
-    val messages = _messages.asSharedFlow()
-
-    fun saveRecord(record: MoneyRecord) {
-        viewModelScope.launch { recordRepo.upsert(record) }
+    fun refresh() {
+        viewModelScope.launch { recordRepo.refresh() }
+        viewModelScope.launch { presetRepo.refresh() }
     }
 
-    fun deleteRecord(id: String) {
-        viewModelScope.launch { recordRepo.delete(id) }
+    fun saveRecord(record: MoneyRecord, onDone: (Result<Unit>) -> Unit) {
+        viewModelScope.launch { onDone(recordRepo.upsert(record)) }
     }
 
-    /** Easy Input: instantly creates a Plus or Minus record; the preset itself is never modified. */
-    fun usePreset(preset: Preset, type: RecordType) {
+    fun deleteRecord(id: String, onDone: (Result<Unit>) -> Unit) {
+        viewModelScope.launch { onDone(recordRepo.delete(id)) }
+    }
+
+    /** Easy Input: creates a Plus or Minus record from the preset; the preset itself is never modified. */
+    fun usePreset(preset: Preset, type: RecordType, onDone: (Result<Unit>) -> Unit) {
         viewModelScope.launch {
-            recordRepo.upsert(
-                MoneyRecord(
-                    type = type,
-                    amount = preset.amount,
-                    description = preset.name,
-                    dateTime = System.currentTimeMillis(),
+            onDone(
+                recordRepo.upsert(
+                    MoneyRecord(
+                        type = type,
+                        amount = preset.amount,
+                        description = preset.name,
+                        dateTime = System.currentTimeMillis(),
+                    )
                 )
             )
-            val label = if (type == RecordType.PLUS) "Plus" else "Minus"
-            _messages.emit("$label added: ${preset.name}")
         }
     }
 
-    fun savePreset(preset: Preset) {
-        viewModelScope.launch { presetRepo.upsert(preset) }
+    fun savePreset(preset: Preset, onDone: (Result<Unit>) -> Unit) {
+        viewModelScope.launch { onDone(presetRepo.upsert(preset)) }
     }
 
-    fun deletePreset(id: String) {
-        viewModelScope.launch { presetRepo.delete(id) }
+    fun deletePreset(id: String, onDone: (Result<Unit>) -> Unit) {
+        viewModelScope.launch { onDone(presetRepo.delete(id)) }
     }
 }
 
@@ -145,6 +163,8 @@ class CalendarViewModel(private val recordRepo: RecordRepository) : ViewModel() 
     private val _month = MutableStateFlow(YearMonth.now())
     private val _selected = MutableStateFlow(LocalDate.now())
 
+    val loadState = recordRepo.state
+
     val state: StateFlow<CalendarState> = combine(_month, _selected, recordRepo.records) { m, s, r ->
         buildCalendarState(m, s, r)
     }.stateIn(
@@ -152,6 +172,10 @@ class CalendarViewModel(private val recordRepo: RecordRepository) : ViewModel() 
         SharingStarted.WhileSubscribed(5_000),
         buildCalendarState(_month.value, _selected.value, recordRepo.records.value),
     )
+
+    fun refresh() {
+        viewModelScope.launch { recordRepo.refresh() }
+    }
 
     fun previousMonth() = goTo(_month.value.minusMonths(1))
     fun nextMonth() = goTo(_month.value.plusMonths(1))
@@ -165,12 +189,12 @@ class CalendarViewModel(private val recordRepo: RecordRepository) : ViewModel() 
         _selected.value = date
     }
 
-    fun saveRecord(record: MoneyRecord) {
-        viewModelScope.launch { recordRepo.upsert(record) }
+    fun saveRecord(record: MoneyRecord, onDone: (Result<Unit>) -> Unit) {
+        viewModelScope.launch { onDone(recordRepo.upsert(record)) }
     }
 
-    fun deleteRecord(id: String) {
-        viewModelScope.launch { recordRepo.delete(id) }
+    fun deleteRecord(id: String, onDone: (Result<Unit>) -> Unit) {
+        viewModelScope.launch { onDone(recordRepo.delete(id)) }
     }
 }
 
