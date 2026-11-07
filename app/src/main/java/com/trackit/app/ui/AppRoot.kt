@@ -2,12 +2,7 @@ package com.trackit.app.ui
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,10 +50,7 @@ private fun AuthFlow(factory: ViewModelProvider.Factory) {
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
 
 private val tabs = listOf(
-    Tab("track", "Track", Icons.Filled.Add),
-    Tab("calendar", "Calendar", Icons.Filled.DateRange),
-    Tab("profile", "Profile", Icons.Filled.Person),
-)
+                    )
 
 @Composable
 private fun MainScaffold(app: AppViewModel, factory: ViewModelProvider.Factory) {
@@ -68,20 +60,10 @@ private fun MainScaffold(app: AppViewModel, factory: ViewModelProvider.Factory) 
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                tabs.forEach { tab ->
-                    NavigationBarItem(
-                        selected = current == tab.route,
-                        onClick = {
-                            nav.navigate(tab.route) {
-                                popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(tab.icon, contentDescription = tab.label) },
-                        label = { Text(tab.label) },
-                    )
+                nav.navigate(tab.route) {
+                    popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
                 }
             }
         },

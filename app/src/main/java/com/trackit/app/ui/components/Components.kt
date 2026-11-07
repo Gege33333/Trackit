@@ -1,31 +1,19 @@
 package com.trackit.app.ui.components
 
 import android.app.DatePickerDialog
-import android.app.TimePickerDialog
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -38,12 +26,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.trackit.app.data.MoneyRecord
 import com.trackit.app.data.Preset
@@ -51,7 +37,6 @@ import com.trackit.app.data.RecordType
 import com.trackit.app.ui.theme.minusColor
 import com.trackit.app.ui.theme.plusColor
 import com.trackit.app.util.formatRp
-import com.trackit.app.util.formatSigned
 import com.trackit.app.util.localDateTime
 import com.trackit.app.util.toEpochMillis
 import java.time.LocalDate
@@ -74,58 +59,7 @@ fun typeLabel(type: RecordType): String = when (type) {
     RecordType.MINUS -> "Minus (-)"
 }
 
-private val timeFormat = DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH)
 private val dateFormat = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH)
-
-@Composable
-fun RecordRow(
-    record: MoneyRecord,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val color = typeColor(record.type)
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier
-                .width(4.dp)
-                .height(40.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(color)
-        )
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                record.description.ifBlank { typeLabel(record.type) },
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                "${typeLabel(record.type)} · ${record.localDateTime().format(timeFormat)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Text(
-            formatSigned(record.type, record.amount),
-            color = color,
-            fontWeight = FontWeight.SemiBold,
-            style = MaterialTheme.typography.bodyLarge,
-        )
-        IconButton(onClick = onEdit) {
-            Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(20.dp))
-        }
-        IconButton(onClick = onDelete) {
-            Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(20.dp))
-        }
-    }
-}
 
 @Composable
 fun SummaryLine(label: String, value: String, color: Color = MaterialTheme.colorScheme.onSurface, bold: Boolean = false) {
@@ -191,7 +125,6 @@ fun ConfirmDialog(
     )
 }
 
-/** Add / edit dialog for a Plus or Minus record. */
 @Composable
 fun RecordDialog(
     initial: MoneyRecord?,
@@ -254,34 +187,18 @@ fun RecordDialog(
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        enabled = !busy,
-                        onClick = {
-                            DatePickerDialog(
-                                context,
-                                { _, y, m, d ->
-                                    dateTime = LocalDateTime.of(LocalDate.of(y, m + 1, d), dateTime.toLocalTime())
-                                },
-                                dateTime.year, dateTime.monthValue - 1, dateTime.dayOfMonth,
-                            ).show()
-                        },
-                        modifier = Modifier.weight(1f),
-                    ) { Text(dateTime.toLocalDate().format(dateFormat), maxLines = 1) }
-                    OutlinedButton(
-                        enabled = !busy,
-                        onClick = {
-                            TimePickerDialog(
-                                context,
-                                { _, h, min ->
-                                    dateTime = LocalDateTime.of(dateTime.toLocalDate(), LocalTime.of(h, min))
-                                },
-                                dateTime.hour, dateTime.minute, true,
-                            ).show()
-                        },
-                        modifier = Modifier.weight(0.7f),
-                    ) { Text(dateTime.toLocalTime().format(timeFormat)) }
-                }
+                OutlinedButton(
+                    enabled = !busy,
+                    onClick = {
+                        DatePickerDialog(
+                            context,
+                            { _, y, m, d ->
+                                dateTime = LocalDateTime.of(LocalDate.of(y, m + 1, d), dateTime.toLocalTime())
+                            },
+                            dateTime.year, dateTime.monthValue - 1, dateTime.dayOfMonth,
+                        ).show()
+                    },
+                ) { Text(dateTime.toLocalDate().format(dateFormat), maxLines = 1) }
                 (validationError ?: serverError)?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }

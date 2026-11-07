@@ -1,6 +1,5 @@
 package com.trackit.app.ui.track
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,8 +17,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -54,7 +51,6 @@ import com.trackit.app.ui.components.GENERIC_ERROR_MESSAGE
 import com.trackit.app.ui.components.PresetDialog
 import com.trackit.app.ui.components.PresetUseDialog
 import com.trackit.app.ui.components.RecordDialog
-import com.trackit.app.ui.components.RecordRow
 import com.trackit.app.ui.components.SummaryLine
 import com.trackit.app.ui.theme.minusColor
 import com.trackit.app.ui.theme.plusColor
@@ -117,25 +113,8 @@ fun TrackScreen(vm: TrackViewModel) {
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            item {
-                Column {
-                    Image(
-                        painter = painterResource(R.drawable.trackit_wordmark),
-                        contentDescription = "Trackit",
-                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
-                        modifier = Modifier.height(40.dp),
-                    )
-                    Text(
-                        today.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.ENGLISH)),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 14.dp),
-                    )
-                }
-            }
 
             if (loading) {
                 item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
@@ -144,103 +123,40 @@ fun TrackScreen(vm: TrackViewModel) {
                 item { ErrorBanner(failure, onRetry = { vm.refresh() }) }
             }
 
-            // Add record buttons
             item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = { recordDialog = RecordDialogState(null, RecordType.PLUS) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.plusColor,
-                            contentColor = Color.White,
-                        ),
-                        modifier = Modifier.weight(1f),
-                    ) { Text("+ Plus", maxLines = 1) }
-                    Button(
-                        onClick = { recordDialog = RecordDialogState(null, RecordType.MINUS) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.minusColor,
-                            contentColor = Color.White,
-                        ),
-                        modifier = Modifier.weight(1f),
-                    ) { Text("- Minus", maxLines = 1) }
+                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f),
                 }
             }
 
             // Easy Input
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
+                    Text(
+                        if (presetEditMode) "Tap a preset to edit it" else "Tap a preset, then choose Plus or Minus",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(presets, key = { it.id }) { preset ->
+                                    if (presetEditMode) presetDialog = PresetDialogState(preset) else usingPreset = preset
+                                }
+                            }
+                    }
+                }
+            }
+
+            item {
                     ) {
-                        Column {
-                            Text("Easy Input", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    SummaryLine("Total Plus", formatRp(summary.plusTotal), MaterialTheme.plusColor)
+                    SummaryLine("Total Minus", formatRp(summary.minusTotal), MaterialTheme.minusColor)
+                }
+            }
+
+            item {
                             Text(
-                                if (presetEditMode) "Tap a preset to edit it" else "Tap a preset, then choose Plus or Minus",
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                        }
-                        if (presets.isNotEmpty()) {
-                            TextButton(onClick = { presetEditMode = !presetEditMode }) {
-                                Text(if (presetEditMode) "Done" else "Edit")
-                            }
-                        }
-                    }
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(presets, key = { it.id }) { preset ->
-                            PresetCard(preset, presetEditMode) {
-                                if (presetEditMode) presetDialog = PresetDialogState(preset) else usingPreset = preset
-                            }
-                        }
-                        item { NewPresetCard { presetDialog = PresetDialogState(null) } }
-                    }
-                }
-            }
-
-            // Today
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                    shape = RoundedCornerShape(20.dp),
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Today", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Column(Modifier.padding(top = 8.dp)) {
-                            SummaryLine("Total Plus", formatRp(summary.plusTotal), MaterialTheme.plusColor)
-                            SummaryLine("Total Minus", formatRp(summary.minusTotal), MaterialTheme.minusColor)
-                            HorizontalDivider(Modifier.padding(vertical = 6.dp))
-                            SummaryLine(
-                                "Net Result",
-                                formatNet(summary.net),
-                                when {
-                                    summary.net > 0 -> MaterialTheme.plusColor
-                                    summary.net < 0 -> MaterialTheme.minusColor
-                                    else -> MaterialTheme.colorScheme.onSurface
-                                },
-                                bold = true,
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (todayRecords.isNotEmpty()) {
-                items(todayRecords, key = { it.id }) { record ->
-                    RecordRow(
-                        record = record,
-                        onEdit = { recordDialog = RecordDialogState(record, record.type) },
-                        onDelete = { deleting = record },
-                    )
-                }
-            } else if (!loading && failure == null) {
-                item {
-                    Text(
-                        "No records yet today. Add a plus or a minus above.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
             }
         }
@@ -343,48 +259,20 @@ fun TrackScreen(vm: TrackViewModel) {
 }
 
 @Composable
-private fun PresetCard(preset: Preset, editMode: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.primaryContainer,
-        modifier = Modifier.widthIn(min = 120.dp, max = 200.dp),
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Text(
-                preset.name,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                formatRp(preset.amount),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-            if (editMode) {
-                Text("Edit", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    preset.name,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    formatRp(preset.amount),
+                    fontWeight = FontWeight.Bold,
+                )
             }
-        }
-    }
-}
-
-@Composable
-private fun NewPresetCard(onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.background,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-    ) {
-        Column(
-            Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text("+", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-            Text("New", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
