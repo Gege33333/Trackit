@@ -100,53 +100,53 @@ fun CalendarTab(vm: CalendarViewModel) {
             }
         }
 
-                    calendarWeekdays.forEach { name ->
-                        Text(
-                            name,
-                            modifier = Modifier.weight(1f),
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            calendarWeekdays.forEach { name ->
+                Text(
+                    name,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        val offset = s.month.atDay(1).dayOfWeek.value - 1
+        val padded: List<LocalDate?> = cells + List((7 - cells.size % 7) % 7) { null }
+        padded.chunked(7).forEach { week ->
+            Row(Modifier.fillMaxWidth()) {
+                week.forEach { date ->
+                    if (date == null) {
+                    } else {
+                        CalendarDayCell(
+                            date = date,
+                            net = s.dayNet[date],
+                            selected = date == s.selected,
+                            isToday = date == today,
+                            onClick = { vm.select(date) },
                         )
                     }
                 }
-                val offset = s.month.atDay(1).dayOfWeek.value - 1
-                val padded: List<LocalDate?> = cells + List((7 - cells.size % 7) % 7) { null }
-                padded.chunked(7).forEach { week ->
-                    Row(Modifier.fillMaxWidth()) {
-                        week.forEach { date ->
-                            if (date == null) {
-                            } else {
-                                CalendarDayCell(
-                                    date = date,
-                                    net = s.dayNet[date],
-                                    selected = date == s.selected,
-                                    isToday = date == today,
-                                    onClick = { vm.select(date) },
-                                )
-                            }
-                        }
+            }
+        }
+
+                Text(
+                    s.selected.format(DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.ENGLISH)),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+
+                Text(
+                    "Records",
+                )
+                if (s.dayRecords.isEmpty()) {
+                    Text(
+                        "No records for this date.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                } else {
                     }
                 }
-
-            Text(
-                s.selected.format(DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.ENGLISH)),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-            )
-
-            Text(
-                "Records",
-            )
-            if (s.dayRecords.isEmpty()) {
-                Text(
-                    "No records for this date.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 8.dp),
-                )
-            } else {
-                }
-            }
         }
     }
 

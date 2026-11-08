@@ -41,17 +41,10 @@ private fun AuthLayout(subtitle: String, content: @Composable () -> Unit) {
     ) {
         Spacer(Modifier.height(24.dp))
         Text(
-            "Trackit",
-            style = MaterialTheme.typography.displaySmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Text(
             subtitle,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(28.dp))
         content()
     }
 }

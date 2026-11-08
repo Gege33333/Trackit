@@ -30,7 +30,6 @@ import com.trackit.app.ui.components.ConfirmDialog
 import com.trackit.app.ui.viewmodel.AppViewModel
 
 @Composable
-fun ProfileScreen(vm: AppViewModel) {
     val user by vm.user.collectAsStateWithLifecycle()
     val darkSetting by vm.darkMode.collectAsStateWithLifecycle()
     var confirmLogout by remember { mutableStateOf(false) }

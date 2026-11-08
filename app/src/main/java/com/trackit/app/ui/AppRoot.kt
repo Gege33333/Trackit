@@ -50,7 +50,7 @@ private fun AuthFlow(factory: ViewModelProvider.Factory) {
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
 
 private val tabs = listOf(
-                    )
+)
 
 @Composable
 private fun MainScaffold(app: AppViewModel, factory: ViewModelProvider.Factory) {
@@ -60,12 +60,12 @@ private fun MainScaffold(app: AppViewModel, factory: ViewModelProvider.Factory) 
 
     Scaffold(
         bottomBar = {
-                nav.navigate(tab.route) {
-                    popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                    launchSingleTop = true
-                    restoreState = true
+                    nav.navigate(tab.route) {
+                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
                 }
-            }
         },
     ) { padding ->
         NavHost(navController = nav, startDestination = "track", modifier = Modifier.padding(padding)) {
@@ -77,7 +77,6 @@ private fun MainScaffold(app: AppViewModel, factory: ViewModelProvider.Factory) 
                 val vm: CalendarViewModel = viewModel(factory = factory)
                 CalendarTab(vm)
             }
-            composable("profile") { ProfileScreen(app) }
-        }
-    }
-}
+            }
+            }
+            }

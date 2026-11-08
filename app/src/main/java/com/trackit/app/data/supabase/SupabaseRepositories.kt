@@ -1,6 +1,5 @@
 package com.trackit.app.data.supabase
 
-import android.util.Patterns
 import com.trackit.app.data.AuthRepository
 import com.trackit.app.data.LoadState
 import com.trackit.app.data.MoneyRecord
@@ -8,7 +7,6 @@ import com.trackit.app.data.Preset
 import com.trackit.app.data.PresetRepository
 import com.trackit.app.data.RecordRepository
 import com.trackit.app.data.RecordType
-import com.trackit.app.data.UserAccount
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,87 +18,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
 import java.time.OffsetDateTime
-import kotlin.coroutines.cancellation.CancellationException
 
 private const val PAGE_SIZE = 1000
-
-// =============================================================================== Auth
-
-class SupabaseAuthRepository(
-    private val client: SupabaseClient,
-    scope: CoroutineScope,
-) : AuthRepository {
-
-    private val _user = MutableStateFlow(client.store.load()?.toAccount())
-    override val user: StateFlow<UserAccount?> = _user.asStateFlow()
-
-    init {
-        client.onSessionLost = { _user.value = null }
-        if (_user.value != null) scope.launch { syncProfileName() }
-    }
-
-    private fun Session.toAccount() = UserAccount(id = userId, name = name, email = email)
-
-    override suspend fun register(name: String, email: String, password: String): Result<Boolean> = attempt {
-        val n = name.trim()
-        val e = email.trim().lowercase()
-        if (n.isEmpty()) throw ValidationException("Please enter your name.")
-        if (!Patterns.EMAIL_ADDRESS.matcher(e).matches()) throw ValidationException("Please enter a valid email address.")
-        if (password.length < 6) throw ValidationException("Password must be at least 6 characters.")
-
-        val body = JSONObject()
-            .put("email", e)
-            .put("password", password)
-            .put("data", JSONObject().put("display_name", n))
-        val j = client.authRequest("signup", body)
-        if (j.has("access_token")) {
-            val s = sessionFrom(j).let { if (it.name.isBlank()) it.copy(name = n) else it }
-            client.store.save(s)
-            _user.value = s.toAccount()
-            true
-        } else {
-            false // email confirmation required
-        }
-    }
-
-    override suspend fun login(email: String, password: String): Result<Unit> = attempt {
-        val e = email.trim().lowercase()
-        if (e.isEmpty() || password.isEmpty()) throw ValidationException("Please enter your email and password.")
-        val j = client.authRequest(
-            "token?grant_type=password",
-            JSONObject().put("email", e).put("password", password),
-        )
-        val s = sessionFrom(j)
-        client.store.save(s)
-        _user.value = s.toAccount()
-        syncProfileName()
-    }
-
-    override suspend fun logout() {
-        val s = client.store.load()
-        client.store.clear()
-        _user.value = null
-        if (s != null) client.signOutRemote(s.accessToken)
-    }
-
-    /** Best effort: the display name in the profiles table is the source of truth. */
-    private suspend fun syncProfileName() {
-        try {
-            val rows = JSONArray(client.rest("GET", "profiles?select=display_name&limit=1"))
-            val name = rows.optJSONObject(0)?.strOrNull("display_name").orEmpty()
-            val s = client.store.load() ?: return
-            if (name.isNotBlank() && name != s.name) {
-                val updated = s.copy(name = name)
-                client.store.save(updated)
-                _user.value = updated.toAccount()
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // ignore: the name from sign-up is already shown
-        }
-    }
-}
 
 // =============================================================================== Records
 
@@ -151,7 +70,7 @@ class SupabaseRecordRepository(
             val body = client.rest(
                 "GET",
                 "transactions?select=id,type,amount,description,occurred_at" +
-                        "&order=occurred_at.desc,id.asc&limit=$PAGE_SIZE&offset=$offset",
+                    "&order=occurred_at.desc,id.asc&limit=$PAGE_SIZE&offset=$offset",
             )
             val arr = JSONArray(body)
             for (i in 0 until arr.length()) parse(arr.getJSONObject(i))?.let { out.add(it) }

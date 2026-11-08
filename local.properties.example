@@ -1,0 +1,5 @@
+## Copy these two lines into your real local.properties file (the one Android Studio creates).
+## Use the Project URL and the publishable key from Supabase > Project Settings > API.
+## NEVER put the service_role / secret key here or anywhere in the app.
+SUPABASE_URL=https://YOUR-PROJECT-ID.supabase.co
+SUPABASE_KEY=YOUR-PUBLISHABLE-KEY

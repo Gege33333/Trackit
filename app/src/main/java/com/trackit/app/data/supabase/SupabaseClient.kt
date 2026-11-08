@@ -162,13 +162,12 @@ class SupabaseClient(baseUrl: String, private val apiKey: String, val store: Ses
         val j = runCatching { JSONObject(raw.body) }.getOrNull()
         val code = j?.strOrNull("error_code") ?: j?.strOrNull("code")
         val detail = j?.strOrNull("msg") ?: j?.strOrNull("message")
-        ?: j?.strOrNull("error_description") ?: j?.strOrNull("error") ?: ""
+            ?: j?.strOrNull("error_description") ?: j?.strOrNull("error") ?: ""
         val message = when {
             code == "invalid_credentials" || detail.contains("Invalid login credentials", ignoreCase = true) ->
                 "Incorrect email or password."
             code == "email_not_confirmed" || detail.contains("Email not confirmed", ignoreCase = true) ->
                 "Please confirm your email first. Check your inbox for the confirmation link."
-            code == "user_already_exists" || code == "email_exists" || detail.contains("already registered", ignoreCase = true) ->
                 "This email is already registered."
             code == "weak_password" -> "That password is too weak. Try a longer or less common one."
             raw.status == 429 || code?.contains("rate_limit") == true ->
@@ -182,7 +181,6 @@ class SupabaseClient(baseUrl: String, private val apiKey: String, val store: Ses
         return ApiException(raw.status, code, detail, message)
     }
 
-    // ---------------------------------------------------------------- Auth
 
     suspend fun authRequest(path: String, body: JSONObject): JSONObject {
         requireConfigured()
@@ -196,10 +194,8 @@ class SupabaseClient(baseUrl: String, private val apiKey: String, val store: Ses
         return if (raw.body.isBlank()) JSONObject() else JSONObject(raw.body)
     }
 
-    suspend fun signOutRemote(accessToken: String) {
         if (base.isEmpty() || apiKey.isBlank()) return
         val request = Request.Builder()
-            .url("$base/auth/v1/logout")
             .header("apikey", apiKey)
             .header("Authorization", "Bearer $accessToken")
             .post("{}".toRequestBody(jsonType))
@@ -221,8 +217,6 @@ class SupabaseClient(baseUrl: String, private val apiKey: String, val store: Ses
         try {
             val j = authRequest("token?grant_type=refresh_token", JSONObject().put("refresh_token", old.refreshToken))
             val fresh = sessionFrom(j).let { if (it.name.isBlank()) it.copy(name = old.name) else it }
-            store.save(fresh)
-            return fresh.accessToken
         } catch (e: ApiException) {
             if (e.status == 400 || e.status == 401 || e.status == 403) {
                 store.clear()

@@ -3,7 +3,6 @@
     <background android:drawable="@color/ic_launcher_background" />
     <foreground>
         <inset
-            android:drawable="@drawable/trackit_icon"
             android:inset="15%" />
     </foreground>
 </adaptive-icon>
