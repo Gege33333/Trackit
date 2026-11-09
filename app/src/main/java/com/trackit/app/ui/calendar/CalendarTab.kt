@@ -16,8 +16,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -42,6 +47,8 @@ import com.trackit.app.ui.components.ErrorBanner
 import com.trackit.app.ui.components.GENERIC_ERROR_MESSAGE
 import com.trackit.app.ui.components.RecordDialog
 import com.trackit.app.ui.components.SummaryLine
+import com.trackit.app.ui.components.TransactionRow
+import com.trackit.app.ui.components.netResultColor
 import com.trackit.app.ui.theme.minusColor
 import com.trackit.app.ui.theme.plusColor
 import com.trackit.app.ui.viewmodel.CalendarViewModel
@@ -52,6 +59,8 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+private val calendarWeekdays = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+private const val CALENDAR_CELL_RATIO = 0.8f
 
 @Composable
 fun CalendarTab(vm: CalendarViewModel) {
@@ -74,15 +83,20 @@ fun CalendarTab(vm: CalendarViewModel) {
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 16.dp),
     ) {
         if (loadState is LoadState.Loading) {
+            LinearProgressIndicator(Modifier.fillMaxWidth().padding(bottom = 8.dp))
         }
         (loadState as? LoadState.Failed)?.let { failed ->
+            ErrorBanner(failed.message, onRetry = { vm.refresh() }, modifier = Modifier.padding(bottom = 8.dp))
         }
 
+        // A. Month header + monthly total, side by side
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Column {
                 Text(
@@ -90,31 +104,50 @@ fun CalendarTab(vm: CalendarViewModel) {
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { vm.previousMonth() }) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous month")
+                    }
+                    IconButton(onClick = { vm.nextMonth() }) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next month")
+                    }
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
+                    "Month total",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
                     formatNet(s.monthNet),
+                    color = netResultColor(s.monthNet),
                     fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.headlineSmall,
                 )
             }
         }
 
+        // B. Calendar grid
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
             calendarWeekdays.forEach { name ->
                 Text(
                     name,
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
         val offset = s.month.atDay(1).dayOfWeek.value - 1
+        val cells: List<LocalDate?> = List(offset) { null } + (1..s.month.lengthOfMonth()).map { s.month.atDay(it) }
         val padded: List<LocalDate?> = cells + List((7 - cells.size % 7) % 7) { null }
         padded.chunked(7).forEach { week ->
             Row(Modifier.fillMaxWidth()) {
                 week.forEach { date ->
                     if (date == null) {
+                        Spacer(Modifier.weight(1f).padding(2.dp).aspectRatio(CALENDAR_CELL_RATIO))
                     } else {
                         CalendarDayCell(
                             date = date,
@@ -122,12 +155,20 @@ fun CalendarTab(vm: CalendarViewModel) {
                             selected = date == s.selected,
                             isToday = date == today,
                             onClick = { vm.select(date) },
+                            modifier = Modifier.weight(1f).padding(2.dp),
                         )
                     }
                 }
             }
         }
 
+        // C. Daily details
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+        ) {
+            Column(Modifier.padding(16.dp)) {
                 Text(
                     s.selected.format(DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.ENGLISH)),
                     style = MaterialTheme.typography.titleLarge,
@@ -136,6 +177,8 @@ fun CalendarTab(vm: CalendarViewModel) {
 
                 Text(
                     "Records",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(top = 12.dp),
                 )
                 if (s.dayRecords.isEmpty()) {
                     Text(
@@ -145,8 +188,25 @@ fun CalendarTab(vm: CalendarViewModel) {
                         modifier = Modifier.padding(vertical = 8.dp),
                     )
                 } else {
+                    s.dayRecords.forEach { record ->
+                        TransactionRow(record, onEdit = { editing = record }, onDelete = { deleting = record })
                     }
                 }
+
+                HorizontalDivider(
+                    Modifier.padding(vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
+                Text("Summary", style = MaterialTheme.typography.titleSmall)
+                SummaryLine("Total Plus", formatRp(s.daySummary.plusTotal), MaterialTheme.plusColor)
+                SummaryLine("Total Minus", formatRp(s.daySummary.minusTotal), MaterialTheme.minusColor)
+                SummaryLine(
+                    "Net Result",
+                    formatNet(s.daySummary.net),
+                    netResultColor(s.daySummary.net),
+                    bold = true,
+                )
+            }
         }
     }
 
@@ -209,12 +269,15 @@ private fun CalendarDayCell(
         netValue > 0 -> MaterialTheme.plusColor
         else -> MaterialTheme.minusColor
     }
+    val background = if (hasResult) accent.copy(alpha = 0.18f) else scheme.surfaceVariant.copy(alpha = 0.55f)
+    val shape = RoundedCornerShape(10.dp)
 
     Box(
         modifier = modifier
             .aspectRatio(CALENDAR_CELL_RATIO)
             .clip(shape)
             .background(background)
+            .then(if (selected) Modifier.border(2.dp, scheme.primary, shape) else Modifier)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -222,12 +285,15 @@ private fun CalendarDayCell(
             Text(
                 date.dayOfMonth.toString(),
                 style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (isToday) FontWeight.ExtraBold else FontWeight.Medium,
+                color = if (isToday) scheme.primary else scheme.onSurface,
             )
             if (hasResult) {
                 Text(
                     (if (netValue > 0) "+" else "-") + compactAmount(netValue),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
+                    color = accent,
                     maxLines = 1,
                 )
             }

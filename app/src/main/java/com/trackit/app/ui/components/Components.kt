@@ -125,6 +125,10 @@ fun ConfirmDialog(
     )
 }
 
+/**
+ * Edit dialog for a Plus or Minus record. Only the date can be changed;
+ * the existing time of day is kept in the background so ordering stays stable.
+ */
 @Composable
 fun RecordDialog(
     initial: MoneyRecord?,
@@ -198,6 +202,7 @@ fun RecordDialog(
                             dateTime.year, dateTime.monthValue - 1, dateTime.dayOfMonth,
                         ).show()
                     },
+                    modifier = Modifier.fillMaxWidth(),
                 ) { Text(dateTime.toLocalDate().format(dateFormat), maxLines = 1) }
                 (validationError ?: serverError)?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

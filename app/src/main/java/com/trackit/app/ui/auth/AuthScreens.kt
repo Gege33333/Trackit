@@ -1,5 +1,6 @@
 package com.trackit.app.ui.auth
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -24,10 +25,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.trackit.app.R
 import com.trackit.app.ui.viewmodel.AuthViewModel
 
 @Composable
@@ -40,11 +44,19 @@ private fun AuthLayout(subtitle: String, content: @Composable () -> Unit) {
         verticalArrangement = Arrangement.Center,
     ) {
         Spacer(Modifier.height(24.dp))
+        Image(
+            painter = painterResource(R.drawable.trackit_wordmark),
+            contentDescription = "Trackit",
+            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
+            modifier = Modifier.height(36.dp),
+        )
+        Spacer(Modifier.height(10.dp))
         Text(
             subtitle,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Spacer(Modifier.height(8.dp))
         content()
     }
 }

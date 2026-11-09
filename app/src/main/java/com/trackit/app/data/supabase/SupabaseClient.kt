@@ -52,9 +52,22 @@ data class Session(
     val name: String,
 )
 
-/** Keeps the login session in encrypted storage so the user stays logged in after restarts. */
-class SessionStore(context: Context) {
-    private val prefs: SharedPreferences? = try {
+/** Keeps the login session on the device so the user stays logged in after restarts. */
+class SessionStore(private val context: Context) {
+    private val prefs: SharedPreferences = openPrefs()
+
+    private fun openPrefs(): SharedPreferences {
+        // 1) Encrypted storage
+        tryEncrypted()?.let { return it }
+        // 2) The encrypted file or its key is broken (reinstall, backup restore, some devices).
+        //    Remove the broken pieces and try once more.
+        resetEncryptedStorage()
+        tryEncrypted()?.let { return it }
+        // 3) Last resort: private app storage, so the user is not logged out on every start.
+        return context.getSharedPreferences("trackit_session_plain", Context.MODE_PRIVATE)
+    }
+
+    private fun tryEncrypted(): SharedPreferences? = try {
         val key = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
         EncryptedSharedPreferences.create(
             context,
@@ -64,32 +77,40 @@ class SessionStore(context: Context) {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
         )
     } catch (e: Exception) {
-        null // secure storage unavailable: keep the session in memory only
+        null
     }
-    private var memory: Session? = null
+
+    private fun resetEncryptedStorage() {
+        try {
+            context.deleteSharedPreferences("trackit_session")
+        } catch (e: Exception) {
+            // ignore
+        }
+        try {
+            val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
+            keyStore.load(null)
+            keyStore.deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
+        } catch (e: Exception) {
+            // ignore
+        }
+    }
 
     fun load(): Session? {
-        val p = prefs ?: return memory
-        val access = p.getString("access_token", null) ?: return null
-        val refresh = p.getString("refresh_token", null) ?: return null
-        val uid = p.getString("user_id", null) ?: return null
+        val access = prefs.getString("access_token", null) ?: return null
+        val refresh = prefs.getString("refresh_token", null) ?: return null
+        val uid = prefs.getString("user_id", null) ?: return null
         return Session(
             accessToken = access,
             refreshToken = refresh,
-            expiresAt = p.getLong("expires_at", 0L),
+            expiresAt = prefs.getLong("expires_at", 0L),
             userId = uid,
-            email = p.getString("email", "") ?: "",
-            name = p.getString("name", "") ?: "",
+            email = prefs.getString("email", "") ?: "",
+            name = prefs.getString("name", "") ?: "",
         )
     }
 
     fun save(s: Session) {
-        val p = prefs
-        if (p == null) {
-            memory = s
-            return
-        }
-        p.edit()
+        prefs.edit()
             .putString("access_token", s.accessToken)
             .putString("refresh_token", s.refreshToken)
             .putLong("expires_at", s.expiresAt)
@@ -100,8 +121,7 @@ class SessionStore(context: Context) {
     }
 
     fun clear() {
-        memory = null
-        prefs?.edit()?.clear()?.apply()
+        prefs.edit().clear().apply()
     }
 }
 
@@ -168,19 +188,35 @@ class SupabaseClient(baseUrl: String, private val apiKey: String, val store: Ses
                 "Incorrect email or password."
             code == "email_not_confirmed" || detail.contains("Email not confirmed", ignoreCase = true) ->
                 "Please confirm your email first. Check your inbox for the confirmation link."
+            code == "user_already_exists" || code == "email_exists" ||
+                detail.contains("already registered", ignoreCase = true) ||
+                detail.contains("already been registered", ignoreCase = true) ->
                 "This email is already registered."
+            code == "same_password" -> "Your new password must be different from the current one."
             code == "weak_password" -> "That password is too weak. Try a longer or less common one."
+            code == "over_email_send_rate_limit" ->
+                "Too many emails requested. Please wait a few minutes and try again."
+            code == "reauthentication_needed" || code == "reauthentication_not_valid" ->
+                "Please log out and log in again, then retry."
+            code == "PGRST202" ->
+                "Account deletion isn't set up on the server yet. Run the delete-account SQL in Supabase first."
             raw.status == 429 || code?.contains("rate_limit") == true ->
                 "Too many attempts. Please wait a moment and try again."
             raw.status == 401 -> "Your session has expired. Please log in again."
             raw.status == 403 -> "You don't have permission to do that."
             raw.status >= 500 -> "The server is having problems. Please try again later."
+            raw.status == 404 && (code == "PGRST205" || code == "42P01" ||
+                detail.contains("Could not find the table", ignoreCase = true)) ->
+                "The database tables are missing. Run the SQL setup in the Supabase SQL Editor first."
+            raw.status == 404 && code == null ->
+                "Server not found (404). Check that SUPABASE_URL in local.properties is exactly your Project URL (like https://abcd.supabase.co) with nothing after .co, then rebuild the app."
             detail.isNotBlank() -> detail
             else -> "Request failed (${raw.status})."
         }
         return ApiException(raw.status, code, detail, message)
     }
 
+    // ---------------------------------------------------------------- Auth (no login needed)
 
     suspend fun authRequest(path: String, body: JSONObject): JSONObject {
         requireConfigured()
@@ -194,8 +230,11 @@ class SupabaseClient(baseUrl: String, private val apiKey: String, val store: Ses
         return if (raw.body.isBlank()) JSONObject() else JSONObject(raw.body)
     }
 
+    /** Best-effort server-side logout. [scope]: "local" (this device), "others", or "global". */
+    suspend fun signOutRemote(accessToken: String, scope: String = "local") {
         if (base.isEmpty() || apiKey.isBlank()) return
         val request = Request.Builder()
+            .url("$base/auth/v1/logout?scope=$scope")
             .header("apikey", apiKey)
             .header("Authorization", "Bearer $accessToken")
             .post("{}".toRequestBody(jsonType))
@@ -217,6 +256,10 @@ class SupabaseClient(baseUrl: String, private val apiKey: String, val store: Ses
         try {
             val j = authRequest("token?grant_type=refresh_token", JSONObject().put("refresh_token", old.refreshToken))
             val fresh = sessionFrom(j).let { if (it.name.isBlank()) it.copy(name = old.name) else it }
+            // keep the latest known name and email from our own storage
+            val merged = fresh.copy(name = old.name.ifBlank { fresh.name })
+            store.save(merged)
+            return merged.accessToken
         } catch (e: ApiException) {
             if (e.status == 400 || e.status == 401 || e.status == 403) {
                 store.clear()
@@ -225,6 +268,32 @@ class SupabaseClient(baseUrl: String, private val apiKey: String, val store: Ses
             }
             throw e
         }
+    }
+
+    // ---------------------------------------------------------------- Auth (logged-in user)
+
+    /** Calls an authenticated Auth endpoint, e.g. GET user, PUT user, POST logout?scope=others. */
+    suspend fun authorized(method: String, path: String, body: JSONObject? = null): String {
+        requireConfigured()
+        for (tryIndex in 0..1) {
+            val token = validAccessToken(forceRefresh = tryIndex == 1)
+            val builder = Request.Builder()
+                .url("$base/auth/v1/$path")
+                .header("apikey", apiKey)
+                .header("Authorization", "Bearer $token")
+            val payload = (body?.toString() ?: "{}").toRequestBody(jsonType)
+            val request = when (method) {
+                "PUT" -> builder.put(payload)
+                "POST" -> builder.post(payload)
+                "DELETE" -> builder.delete()
+                else -> builder.get()
+            }.build()
+            val raw = call(request)
+            if (raw.status in 200..299) return raw.body
+            if (raw.status == 401 && tryIndex == 0) continue // token rejected: refresh once and retry
+            throw buildError(raw)
+        }
+        throw ApiException(401, "unauthorized", "", "Your session has expired. Please log in again.")
     }
 
     // ---------------------------------------------------------------- Database (PostgREST)
